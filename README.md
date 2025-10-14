@@ -19,7 +19,21 @@
 - scipy==1.9.2
 - scikit-learn==1.0.2
 - nltk==3.7
+  
+## Dataset Download and Preparation
 
+Please create a `data/` directory in the project root and download the following datasets into the specified subfolders.
+
+### 1️⃣ UnKE Dataset
+Download all files from the [TrustedLLM/UnKE repository](https://github.com/TrustedLLM/UnKE/tree/main/data) and place them in:
+```bash
+data/UnKE/
+```
+### 2️⃣ AKEW Dataset
+Download all files from the [bobxwu/AKEW repository](https://github.com/bobxwu/AKEW/tree/master/datasets) and place them in:
+```bash
+data/AKEW/
+```
 ## Quick Start
 ### An example for editing Llama3-8B-Instruct on UnKEBench dataset using AnyEdit
 #### 1. Edit Llama3-8B-Instruct 
