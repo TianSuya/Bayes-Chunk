@@ -40,7 +40,7 @@ data/AKEW/
  
     python3 -m experiments.evaluate_uns     --alg_name=MEMIT_ARE     --model_name=meta-llama/Meta-Llama-3-8B-Instruct     --hparams_fname=Llama3-8B-Instruct.json     --ds_name=unke     --dataset_size_limit=1000     --num_edits=1
 
-This command runs an evaluation script for the NSE algorithm using the Llama3-8b-instruct. Below are the explanations for each argument:
+This command runs an evaluation script for the Anyedit algorithm using the Llama3-8b-instruct. Below are the explanations for each argument:
 
 - `--alg_name=MEMIT_ARE`: Specifies the name of the algorithm being used, which is MEMIT+AnyEdit in this case.
 - `--model_name=meta-llama/Meta-Llama-3-8B-Instruct`: Indicates the name of the model being evaluated, here it is Llama-3-8B-Instruct.
