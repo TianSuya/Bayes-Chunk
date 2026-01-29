@@ -20,6 +20,15 @@ def get_qwen_without_answer_cot(que):
 
 def get_vicuna_without_answer(que):
     return f"""USER: {que} ASSISTANT:"""
+
+def get_llama2_without_answer(que):
+    """Llama-2 format"""
+    return f"<s>[INST] {que} [/INST]"
+
+def get_llama2_without_answer_cot(que):
+    """Llama-2 CoT format"""
+    return f"<s>[INST] Please provide a multi-hop explanation for the next question: {que} [/INST]"
+
 def get_list_llama_without_answer(que, cot):
     if cot == False:
         L = [get_llama_without_answer(line) for line in que]
@@ -31,6 +40,13 @@ def get_list_qwen_without_answer(que, cot):
         L = [get_qwen_without_answer(line) for line in que]
     else:
         L = [get_qwen_without_answer_cot(line) for line in que]
+    return L
+
+def get_list_llama2_without_answer(que, cot):
+    if cot == False:
+        L = [get_llama2_without_answer(line) for line in que]
+    else:
+        L = [get_llama2_without_answer_cot(line) for line in que]
     return L
 
 class UnKEDataset:
@@ -51,6 +67,11 @@ class UnKEDataset:
                 i['para_question'] = get_qwen_without_answer(i['para_question'])
                 i['answer'] = i['answer']+'<|im_end|>'
                 i['sub_question'] = get_list_qwen_without_answer(i['sub_question'], False)
+            elif 'Llama2' in model_name or 'llama-2' in model_name.lower():
+                i['question'] = get_llama2_without_answer(i['question'])
+                i['para_question'] = get_llama2_without_answer(i['para_question'])
+                i['answer'] = i['answer'] + '</s>'
+                i['sub_question'] = get_list_llama2_without_answer(i['sub_question'], False)
 
         self._data = raw[:size]
 

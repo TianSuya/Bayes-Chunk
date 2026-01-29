@@ -123,7 +123,11 @@ def layer_stats(
 
         if batch_tokens is not None and batch_tokens < maxlen:
             maxlen = batch_tokens
-        return TokenizedDataset(raw_ds["train"], tokenizer, maxlen=maxlen)
+
+        print(f"maxlen: {maxlen}")
+        now_ds = TokenizedDataset(raw_ds["train"], tokenizer, maxlen=maxlen)
+        torch.save(now_ds, f"wikipedia_stats_maxlen_{maxlen}.pkl")
+        return now_ds
 
     # Continue with computation of statistics
     batch_size = 100  # Examine this many dataset texts at once

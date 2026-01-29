@@ -21,6 +21,15 @@ def get_qwen_without_answer_cot(que):
 
 def get_vicuna_without_answer(que):
     return f"""USER: {que} ASSISTANT:"""
+
+def get_llama2_without_answer(que):
+    """Llama-2 format"""
+    return f"<s>[INST] {que} [/INST]"
+
+def get_llama2_without_answer_cot(que):
+    """Llama-2 CoT format"""
+    return f"<s>[INST] Please provide a multi-hop explanation for the next question: {que} [/INST]"
+
 def get_list_llama_without_answer(que, cot):
     if cot == False:
         L = [get_llama_without_answer(line) for line in que]
@@ -33,6 +42,14 @@ def get_list_qwen_without_answer(que, cot):
     else:
         L = [get_qwen_without_answer_cot(line) for line in que]
     return L
+
+def get_list_llama2_without_answer(que, cot):
+    if cot == False:
+        L = [get_llama2_without_answer(line) for line in que]
+    else:
+        L = [get_llama2_without_answer_cot(line) for line in que]
+    return L
+
 class CounterFactDataset:
 
     def __init__(self, data_dir: str, model_name: str, size=None, *args, **kwargs):
@@ -60,6 +77,17 @@ class CounterFactDataset:
                         "para_question": get_qwen_without_answer(record["paraphrase_prompts"][0]),
                         "answer": record["requested_rewrite"]["fact_new_uns"]+'<|im_end|>',
                         "sub_question": get_list_qwen_without_answer([q["prompt"].format(q["subject"]) for q in record["requested_rewrite"]["unsfact_triplets_GPT"]][:5], False),
+                        "sub_answer": [q["target"] for q in record["requested_rewrite"]["unsfact_triplets_GPT"]][:5]
+                    }
+                )
+            elif 'Llama2' in model_name or 'llama-2' in model_name.lower():
+                data.append(
+                    {
+                        "id": i,
+                        "question": get_llama2_without_answer(record["requested_rewrite"]["prompt_full"]),
+                        "para_question": get_llama2_without_answer(record["paraphrase_prompts"][0]),
+                        "answer": record["requested_rewrite"]["fact_new_uns"] + '</s>',
+                        "sub_question": get_list_llama2_without_answer([q["prompt"].format(q["subject"]) for q in record["requested_rewrite"]["unsfact_triplets_GPT"]][:5], False),
                         "sub_answer": [q["target"] for q in record["requested_rewrite"]["unsfact_triplets_GPT"]][:5]
                     }
                 )

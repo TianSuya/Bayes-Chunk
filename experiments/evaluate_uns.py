@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 import json
 import shutil
 from pathlib import Path
@@ -15,23 +15,26 @@ from dsets import (
     UnKEDataset,
     CounterFactDataset,
     MQUAKEDataset,
-    EditeveryDataset
+    EditeveryDataset,
+    QWQDataset,
+    FakeDataset,
 )
 
 from memit import MEMITHyperParams, apply_memit_to_model
 from memit_ARE import MEMITAREHyperParams, apply_memit_ARE_to_model
+from memit_ARE_bayes import MEMITAREHyperParams as MEMITAREBayesHyperParams, apply_memit_ARE_to_model as apply_memit_ARE_bayes_to_model
 from AlphaEdit import AlphaEditHyperParams,apply_AlphaEdit_to_model,get_cov
 from AlphaEdit_ARE import AlphaEditAREHyperParams,apply_AlphaEdit_ARE_to_model
 from unke import unkeHyperParams, apply_unke_to_model
 from unke_ARE import unkeAREHyperParams, apply_unke_ARE_to_model
 from util import nethook
 from util.globals import *
-from glue_eval.glue_eval import GLUEEval
 ALG_DICT = {
     "unke_ARE": (unkeAREHyperParams, apply_unke_ARE_to_model),
     "unke": (unkeHyperParams, apply_unke_to_model),
     "AlphaEdit_ARE": (AlphaEditAREHyperParams, apply_AlphaEdit_ARE_to_model),
     "AlphaEdit": (AlphaEditHyperParams, apply_AlphaEdit_to_model),
+    "MEMIT_ARE_bayes": (MEMITAREBayesHyperParams, apply_memit_ARE_bayes_to_model),
     "MEMIT_ARE": (MEMITAREHyperParams, apply_memit_ARE_to_model),
     "MEMIT": (MEMITHyperParams, apply_memit_to_model),
 }
@@ -41,12 +44,18 @@ DS_DICT = {
     "cf": CounterFactDataset,
     "mquake": MQUAKEDataset,
     "editevery": EditeveryDataset,
+    "qwq": QWQDataset,
+    "fake": FakeDataset,
 }
 def get_llama_without_answer(que):
     return f"""<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n{que}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"""
 
 def get_qwen_without_answer(que):
     return f"""<|im_start|>user\n{que}<|im_end|>\n<|im_start|>assistant\n"""
+
+def get_llama2_without_answer(que):
+    """Llama-2 format"""
+    return f"<s>[INST] {que} [/INST]"
 
 def set_seed(seed=2024):
     np.random.seed(seed)
@@ -97,9 +106,33 @@ def main(
         ex_datas = [get_llama_without_answer(i['instruction']+i['input'])+i['output']  for i in ex_datas]
     elif hparams.model_name == 'Qwen2.5-7B-Instruct':
         ex_datas = [get_qwen_without_answer(i['instruction']+i['input'])+i['output']  for i in ex_datas]
+    elif 'Llama2' in hparams.model_name or 'llama-2' in hparams.model_name.lower():
+        ex_datas = [get_llama2_without_answer(i['instruction']+i['input'])+i['output']+'</s>'  for i in ex_datas]
     tokenizer = AutoTokenizer.from_pretrained(model_name,padding_side='left')
     if hparams.model_name == 'Llama3-8B-Instruct':
         tokenizer.pad_token_id = tok.eos_token_id
+    elif 'Llama2' in hparams.model_name or 'llama-2' in hparams.model_name.lower():
+        # Llama-2 needs to set pad_token and eos_token
+        tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+    
+    # Get maximum context length of the model
+    if hasattr(model.config, 'max_position_embeddings'):
+        max_context_length = model.config.max_position_embeddings
+    elif hasattr(model.config, 'n_positions'):
+        max_context_length = model.config.n_positions
+    else:
+        # Default: Llama3 and Qwen2.5 are usually 8192
+        max_context_length = 8192
+    if ds_name == 'qwq':
+        max_new_tokens = 4096  # qwq dataset has longer answers, covering about 96% of data
+        # Leave space for generation, so max input length is max_context_length - max_new_tokens
+        max_input_length = min(max_context_length - max_new_tokens, 4096)  # Max 4096 tokens input
+    else:
+        max_new_tokens = 512   # Use default values for other datasets
+        max_input_length = None  # No length limit for other datasets
+    
+    print(f"Model max context length: {max_context_length}, Max input length: {max_input_length}, Max generation length: {max_new_tokens}")
 
     if any(alg in alg_name for alg in ["AlphaEdit","AlphaEdit_ARE"]):
         if not os.path.exists(f"{hparams.model_name}_null_space_project.pt"):
@@ -126,7 +159,7 @@ def main(
         nc_args = dict(P = P) if any(alg in alg_name for alg in ["AlphaEdit","AlphaEdit_ARE"]) else dict()
  
         start = time()
-        if any(alg in alg_name for alg in ["unke", "unke_ARE","MEMIT","MEMIT_ARE","AlphaEdit","AlphaEdit_ARE"]):
+        if any(alg in alg_name for alg in ["unke", "unke_ARE","MEMIT","MEMIT_ARE","MEMIT_ARE_bayes","AlphaEdit","AlphaEdit_ARE"]):
             weights_copy = apply_algo(model, tok, hparams, batch, **ex_args, **nc_args)
         exec_time = time() - start
         print("Execution took", exec_time)
@@ -134,10 +167,15 @@ def main(
         start = time()
         if not sequential:
             for data in batch:
+                # Apply length limit only for qwq dataset
+                tokenizer_kwargs = {'return_tensors': 'pt', 'padding': True}
+                if ds_name == 'qwq' and max_input_length is not None:
+                    tokenizer_kwargs.update({'truncation': True, 'max_length': max_input_length})
+                
                 if ds_name in ['unke','cf']:
-                    question = tokenizer([data['question'],data['para_question']], return_tensors='pt', padding=True)
+                    question = tokenizer([data['question'],data['para_question']], **tokenizer_kwargs)
                 else:
-                    question = tokenizer([data['question']], return_tensors='pt', padding=True)
+                    question = tokenizer([data['question']], **tokenizer_kwargs)
                 #print(question.input_ids) 
                 with torch.no_grad():
                     generated_ids = model.generate(
@@ -145,7 +183,9 @@ def main(
                     attention_mask=question['attention_mask'].to('cuda'),
                     do_sample=True,
                     temperature=0.001,
-                    max_new_tokens=512
+                    max_new_tokens=max_new_tokens,
+                    pad_token_id=tokenizer.pad_token_id,
+                    eos_token_id=tokenizer.eos_token_id
                 )
                 generated_ids = [
                     output_ids[len(input_ids):] for input_ids, output_ids in zip(question['input_ids'], generated_ids)
@@ -164,8 +204,11 @@ def main(
                     data['answer'] = data['answer'][:-len('<|eot_id|>')]
                 elif hparams.model_name == 'Qwen2.5-7B-Instruct':
                     data['answer'] = data['answer'][:-len('<|im_end|>')]
+                elif 'Llama2' in hparams.model_name or 'llama-2' in hparams.model_name.lower():
+                    data['answer'] = data['answer'][:-len('</s>')]
             if ds_name in ['unke','cf','mquake']:
                 for data in batch:
+                    # Apply length limit only for qwq dataset (but qwq has no sub_question, so not needed here)
                     question = tokenizer(data['sub_question'], return_tensors='pt', padding=True)
                     with torch.no_grad():
                         generated_ids = model.generate(
@@ -173,7 +216,9 @@ def main(
                         attention_mask=question['attention_mask'].to('cuda'),
                         do_sample=True,
                         temperature=0.001,# Analysis exp
-                        max_new_tokens=512
+                        max_new_tokens=max_new_tokens,
+                        pad_token_id=tokenizer.pad_token_id,
+                        eos_token_id=tokenizer.eos_token_id
                     )
 
                     generated_ids = [
@@ -194,10 +239,15 @@ def main(
                     nethook.get_parameter(model, k)[...] = v.to("cuda")
     if sequential:
         for data in ds:
+            # Apply length limit only for qwq dataset
+            tokenizer_kwargs = {'return_tensors': 'pt', 'padding': True}
+            if ds_name == 'qwq' and max_input_length is not None:
+                tokenizer_kwargs.update({'truncation': True, 'max_length': max_input_length})
+            
             if ds_name in ['unke','cf']:
-                question = tokenizer([data['question'],data['para_question']], return_tensors='pt', padding=True)
+                question = tokenizer([data['question'],data['para_question']], **tokenizer_kwargs)
             else:
-                question = tokenizer([data['question']], return_tensors='pt', padding=True)
+                question = tokenizer([data['question']], **tokenizer_kwargs)
             #print(question.input_ids) 
             with torch.no_grad():
                 generated_ids = model.generate(
@@ -205,7 +255,9 @@ def main(
                 attention_mask=question['attention_mask'].to('cuda'),
                 do_sample=True,
                 temperature=0.001,
-                max_new_tokens=512
+                max_new_tokens=max_new_tokens,
+                pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=tokenizer.eos_token_id
             )
             generated_ids = [
                 output_ids[len(input_ids):] for input_ids, output_ids in zip(question['input_ids'], generated_ids)
@@ -224,6 +276,8 @@ def main(
                 data['answer'] = data['answer'][:-len('<|eot_id|>')]
             elif hparams.model_name == 'Qwen2.5-7B-Instruct':
                 data['answer'] = data['answer'][:-len('<|im_end|>')]
+            elif 'Llama2' in hparams.model_name or 'llama-2' in hparams.model_name.lower():
+                data['answer'] = data['answer'][:-len('</s>')]
         if ds_name in ['unke','cf','mquake']:
             for data in ds:
                 question = tokenizer(data['sub_question'], return_tensors='pt', padding=True)
@@ -233,7 +287,9 @@ def main(
                     attention_mask=question['attention_mask'].to('cuda'),
                     do_sample=True,
                     temperature=0.001,# Analysis exp
-                    max_new_tokens=512
+                    max_new_tokens=max_new_tokens,
+                    pad_token_id=tokenizer.pad_token_id,
+                    eos_token_id=tokenizer.eos_token_id
                 )
 
                 generated_ids = [
@@ -301,7 +357,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--alg_name",
-        choices=["AlphaEdit","AlphaEdit_ARE", "MEMIT","MEMIT_ARE", "ROME", "FT", "MEND","unke","unke_ARE"],
+        choices=["AlphaEdit","AlphaEdit_ARE", "MEMIT","MEMIT_ARE", "ROME", "FT", "MEND","unke","unke_ARE","MEMIT_ARE_bayes"],
         default="ROME",
         help="Editing algorithm to use. Results are saved in results/<alg_name>/<run_id>, "
         "where a new run_id is generated on each run. "
@@ -323,7 +379,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--ds_name",
-        choices=["cf", "editevery", "unke","mquake"],
+        choices=["cf", "editevery", "unke","mquake", "qwq","fake"],
         default="mcf",
         help="Dataset to perform evaluations on. Either CounterFact (cf), MultiCounterFact (mcf), or zsRE (zsre).",
     )

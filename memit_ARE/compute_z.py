@@ -197,10 +197,35 @@ def compute_z(
         all_idxs.append(lookup_idxs[0])
         print(
         f"Iteration {len(all_delta)}: Init norm {target_init.norm()} | Delta norm {delta.norm()} | Target norm {target.norm()}"
-    )
+        )
+        
+        # ========== GPU memory cleanup: Delete variables no longer needed ==========
+        # Note: Do not delete target_ids and cur_input_ids, they are needed for algorithm logic
+        
+        # 1. Delete intermediate variables in optimization loop (no longer needed after loop)
+        try:
+            del logits, output, full_repr, log_probs, loss, mask
+            del nll_loss_each, nll_loss, weight_decay, tr
+        except NameError:
+            pass  # Some variables may not exist, ignore error
+        
+        # 2. Delete temporary input variables of current segment (recreated in next segment)
+        # Note: cur_input_ids needs to be retained as it will be accumulated in subsequent segments
+        try:
+            del input_ids, rewriting_targets, current_target_ids
+        except NameError:
+            pass
+        
+        # 3. Delete saved variables (saved via clone() or calculation)
+        try:
+            del delta, target_init, opt
+        except NameError:
+            pass
+        
+        # 4. Clear CUDA cache, force release GPU memory
+        torch.cuda.empty_cache()
 
     return all_idxs, all_target
-
 
 
 

@@ -46,7 +46,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--file_path', default='output/unke_Llama3-8B-Instruct_cf_result.json', type=str)
     parser.add_argument('--model_path', default='sentence-transformers/all-MiniLM-L6-v2', type=str)
-    parser.add_argument('--device', default=0, type=int)
+    parser.add_argument('--device', default=7, type=int)
 
     args = parser.parse_args()
 
@@ -72,6 +72,12 @@ if __name__ == "__main__":
 
         print("***********Result**************")
         print(matrics)
+
+    elif ds_name == "qwq" or "fake":
+        matrics = calculate_metrics(data)
+        print("***********Result**************")
+        print(matrics)   
+        
     else:
         for i in data:
             if ' ' not in i['original_prediction']:

@@ -41,7 +41,10 @@ def compute_ks(
     for i in range(len(zs_out)):
         zs_out_list.append(zs_out[i,idxs[i]])
     zs_out =torch.stack(zs_out_list,dim=0)
-
+    
+    # Memory optimization: Clear unnecessary intermediate variables
+    del input_ids, tr
+    torch.cuda.empty_cache()
 
     return zs_out,idxs
 
@@ -78,6 +81,9 @@ def apply_AlphaEdit_to_model(
         )
 
         z_list.append(cur_z)
+        # Memory optimization: compute_z already cleared intermediate variables, just need to clear cache periodically
+        if len(z_list) % 5 == 0:  # Clear every 5 items to avoid being too frequent
+            torch.cuda.empty_cache()
     zs = torch.stack(z_list, dim=0)#(bs,h_dim)
     batch_question = [i['question'] for i in batch_data]
     
@@ -128,11 +134,25 @@ def apply_AlphaEdit_to_model(
         # Update model weights and record desired changes in `delta` variable
         with torch.no_grad():
             weights[weight_name][...] = weights_copy[weight_name] + upd_matrix.float()
-        # Clear GPU memory
-        for x in [layer_ks, cur_zs, targets, layer_in_ks, layer_out_ks,P]:
-            x.cpu()
-            del x
+        
+        tensors_to_clear = [layer_ks, cur_zs, targets, layer_in_ks, layer_out_ks, upd_matrix, resid]
+        for x in tensors_to_clear:
+            if isinstance(x, torch.Tensor) and x.is_cuda:
+                del x
+        # Clear contexts_tok and tr
+        try:
+            del contexts_tok, tr
+        except NameError:
+            pass
         torch.cuda.empty_cache()
+    
+    # Memory optimization: Clear zs and z_list after all layers are processed
+    try:
+        del zs, z_list
+    except NameError:
+        pass
+    torch.cuda.empty_cache()
+    
     return weights_copy
 
 def get_cov(
