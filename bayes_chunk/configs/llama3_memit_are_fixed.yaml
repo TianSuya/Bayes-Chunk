@@ -1,0 +1,22 @@
+model:
+  name_or_path: meta-llama/Meta-Llama-3-8B-Instruct
+  tokenizer_name_or_path: meta-llama/Meta-Llama-3-8B-Instruct
+  torch_dtype: bfloat16
+  device_map: auto
+
+algorithm:
+  name: MEMIT_ARE
+  hparams_path: hparams/MEMIT_ARE/Llama3-8B-Instruct.json
+
+segmentation:
+  type: fixed
+  window_size: 40
+  overlap: 0
+
+evaluation:
+  dataset: editevery
+  data_path: data
+  limit: null
+  output_path: outputs/llama3_memit_are_fixed_editevery.json
+  max_new_tokens: 512
+  temperature: 0.001

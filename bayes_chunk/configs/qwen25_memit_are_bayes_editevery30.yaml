@@ -1,0 +1,24 @@
+model:
+  name_or_path: /data/bowen/cxhe/Qwen/Qwen2___5-7B-Instruct
+  tokenizer_name_or_path: /data/bowen/cxhe/Qwen/Qwen2___5-7B-Instruct
+  torch_dtype: bfloat16
+  device: cuda
+
+algorithm:
+  name: MEMIT_ARE
+  hparams_path: hparams/MEMIT_ARE/Qwen2.5-7B-Instruct.json
+
+segmentation:
+  type: bayes
+  boundary_stride: 40
+  include_last_token_boundary: true
+  verbose: false
+
+evaluation:
+  dataset: editevery
+  data_path: data
+  limit: 30
+  output_path: outputs/cli_qwen_editevery30_results.json
+  metrics_output_path: outputs/cli_qwen_editevery30_metrics.json
+  max_new_tokens: 512
+  temperature: 0.001

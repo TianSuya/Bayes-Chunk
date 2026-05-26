@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bayes-chunk"
+version = "0.1.0"
+description = "Bayes segmentation and editing utilities for long-form knowledge editing."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "datasets",
+    "numpy",
+    "torch",
+    "transformers",
+    "tqdm",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+eval = ["nltk", "sentence-transformers", "rouge-score", "scikit-learn"]
+dev = ["pytest", "ruff"]
+
+[project.scripts]
+bayes-chunk = "bayes_chunk.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["bayes_chunk*"]
+
+[tool.setuptools.package-data]
+bayes_chunk = ["configs/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "gpu: tests that require CUDA and model weights",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"

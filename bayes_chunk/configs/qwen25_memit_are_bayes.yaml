@@ -1,0 +1,23 @@
+model:
+  name_or_path: Qwen/Qwen2.5-7B-Instruct
+  tokenizer_name_or_path: Qwen/Qwen2.5-7B-Instruct
+  torch_dtype: bfloat16
+  device_map: auto
+
+algorithm:
+  name: MEMIT_ARE
+  hparams_path: hparams/MEMIT_ARE/Qwen2.5-7B-Instruct.json
+
+segmentation:
+  type: bayes
+  boundary_stride: 40
+  include_last_token_boundary: true
+  verbose: false
+
+evaluation:
+  dataset: editevery
+  data_path: data
+  limit: null
+  output_path: outputs/qwen25_memit_are_bayes_editevery.json
+  max_new_tokens: 512
+  temperature: 0.001
